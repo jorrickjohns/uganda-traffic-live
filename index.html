@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Uganda Traffic Live Updates</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, Arial, sans-serif; background: #0b1220; }
+
+    #app { height: 100vh; display: flex; }
+    #map { flex: 1; height: 100vh !important; width: 100%; background: #e5e7eb; }
+
+    /* Desktop panel */
+    #panel {
+      width: 390px;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px 14px;
+      box-sizing: border-box;
+      overflow: auto;
+      border-right: 1px solid rgba(255,255,255,0.08);
+      z-index: 10;
+    }
+
+    /* Mobile bottom sheet */
+    @media (max-width: 900px) {
+      #app { display: block; }
+      #map { height: 100vh !important; }
+      #panel {
+        position: fixed; left: 0; right: 0; bottom: 0;
+        width: 100%;
+        max-height: 82vh;
+        border-right: none;
+        border-top: 1px solid rgba(255,255,255,0.10);
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -10px 30px rgba(0,0,0,0.35);
+        transform: translateY(calc(100% - 68px));
+        transition: transform 220ms ease;
+        padding-top: 10px;
+      }
+      #panel.open { transform: translateY(0); }
+      .grabberWrap { display:flex !important; }
+    }
+
+    .grabberWrap {
+      display:none;
+      justify-content:center;
+      margin-bottom: 8px;
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      padding-top: 6px;
+      z-index: 20;
+    }
+    .grabber { width: 46px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.22); }
+
+    .brand { display:flex; align-items:center; gap:10px; margin: 2px 0 6px 0; }
+    .brand h1 { margin:0; font-size: 18px; }
+    .sub { font-size: 12px; opacity: 0.85; margin-bottom: 10px; }
+
+    .card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 12px;
+      border-radius: 14px;
+      margin-bottom: 10px;
+    }
+    .small { font-size: 12px; opacity: 0.85; }
+
+    label { display:block; margin-top:10px; font-size: 13px; opacity: 0.92; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06);
+      color: #e2e8f0;
+      margin-top: 6px;
+      box-sizing: border-box;
+      outline: none;
+      font-size: 16px; /* stops iPhone zoom */
+    }
+    textarea { min-height: 44px; resize: vertical; }
+
+    .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 480px) { .row2 { grid-template-columns: 1fr; } }
+
+    button {
+      border: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+      font-weight: 800;
+      font-size: 16px;
+    }
+    .btnPrimary { background:#2563eb; color: white; }
+    .btnSecondary { background:#334155; color: #e2e8f0; }
+
+    /* Blinking marker */
+    @keyframes blinkPulse {
+      0% { opacity:1; transform: scale(1); }
+      50% { opacity:0.2; transform: scale(0.85); }
+      100% { opacity:1; transform: scale(1); }
+    }
+    .dotMarker {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.75);
+      box-shadow: 0 0 14px rgba(255,255,255,0.18);
+      animation: blinkPulse 1s infinite;
+    }
+    .green { background:#22c55e; }
+    .red { background:#ef4444; }
+    .pink { background:#ec4899; }
+    .leaflet-div-icon { background: transparent; border: none; }
+
+    img.thumb {
+      width: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      border-radius: 12px;
+      margin-top: 8px;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+
+    /* Optional floating open button on mobile */
+    .fab {
+      position: fixed;
+      right: 14px;
+      bottom: 90px;
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      background: #2563eb;
+      color: #fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 26px;
+      font-weight: 900;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      cursor: pointer;
+      z-index: 99999;
+      user-select: none;
+    }
+  </style>
+</head>
+
+<body>
+<div id="app">
+  <div id="panel">
+    <div class="grabberWrap" id="grabberWrap"><div class="grabber"></div></div>
+
+    <div class="brand">
+      <div style="font-size:18px;">🇺🇬🚦</div>
+      <h1>Uganda Traffic Live Updates</h1>
+    </div>
+    <div class="sub">Tap map → road auto-fills → add alternative route → optionally add a photo → post.</div>
+
+    <div class="card">
+      <div class="small" id="picked">Picked location: none</div>
+      <div class="small" id="msg" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <label>Road name (auto from map)</label>
+      <input id="road" placeholder="Tap map to auto-fill (you can edit)" />
+
+      <div class="row2">
+        <div>
+          <label>Status</label>
+          <select id="status">
+            <option value="Clear">Clear (Green)</option>
+            <option value="Jam">Jam (Red)</option>
+            <option value="Heavy">Heavy (Pink)</option>
+          </select>
+        </div>
+        <div>
+          <label>Type</label>
+          <select id="type">
+            <option value="General">General</option>
+            <option value="Accident">Accident</option>
+            <option value="Roadworks">Roadworks</option>
+            <option value="Flood">Flood</option>
+            <option value="Police">Police</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Alternative route (required)</label>
+      <input id="alt" placeholder="e.g. Use Bukoto Road" />
+
+      <label>Note (optional)</label>
+      <textarea id="note" placeholder="e.g. Accident near traffic lights, expect delays."></textarea>
+
+      <label>Photo (optional)</label>
+      <input id="photo" type="file" accept="image/*" capture="environment" />
+      <div class="small">On phone, this opens camera/gallery.</div>
+
+      <button class="btnPrimary" id="postBtn" type="button">Post Update</button>
+      <button class="btnSecondary" id="refreshBtn" type="button">Refresh</button>
+    </div>
+
+    <h3 style="margin:10px 0;">Latest Updates</h3>
+    <div id="list"></div>
+  </div>
+
+  <div id="map"></div>
+</div>
+
+<div class="fab" id="fab" title="Open panel">+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  // 🔥 IMPORTANT:
+  // Replace this with your Render backend URL (no trailing slash)
+  // Example: const BASE = "https://uganda-traffic.onrender.com";
+  const BASE = "YOUR_RENDER_URL_HERE";
+
+  // Bottom sheet behavior (mobile)
+  const isMobile = window.matchMedia("(max-width: 900px)").matches;
+  const panel = document.getElementById("panel");
+  const grabberWrap = document.getElementById("grabberWrap");
+  const fab = document.getElementById("fab");
+
+  function setSheet(open){ if(!isMobile) return; panel.classList.toggle("open", !!open); }
+
+  if(isMobile) {
+    grabberWrap.addEventListener("click", () => setSheet(!panel.classList.contains("open")));
+    fab.addEventListener("click", () => setSheet(true));
+  } else {
+    fab.style.display = "none";
+  }
+
+  function setMsg(t){ document.getElementById("msg").textContent = t; }
+
+  // Map
+  const map = L.map("map").setView([0.3476, 32.5825], 12);
+  const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution:"© OpenStreetMap"
+  }).addTo(map);
+
+  tiles.on("tileerror", () => alert("Map tiles failed. Check internet/network."));
+  setTimeout(() => map.invalidateSize(), 250);
+  window.addEventListener("resize", () => map.invalidateSize());
+
+  let picked = null;
+  let pickedMarker = null;
+  let markers = [];
+
+  function markerColor(status){
+    if(status === "Clear") return "green";
+    if(status === "Jam") return "red";
+    return "pink";
+  }
+  function makeIcon(status){
+    return L.divIcon({
+      className: "leaflet-div-icon",
+      html: `<div class="dotMarker ${markerColor(status)}"></div>`,
+      iconSize: [22,22],
+      iconAnchor: [11,11]
+    });
+  }
+
+  async function reverseGeocode(lat, lng){
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+    try{
+      const res = await fetch(url, { headers: { "Accept":"application/json" } });
+      if(!res.ok) return null;
+      const data = await res.json();
+      const a = data.address || {};
+      return a.road || a.neighbourhood || a.suburb || a.village || a.town || a.city || data.name || null;
+    } catch { return null; }
+  }
+
+  map.on("click", async (e) => {
+    picked = e.latlng;
+    document.getElementById("picked").textContent =
+      `Picked: ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)} (detecting road...)`;
+
+    if(pickedMarker) map.removeLayer(pickedMarker);
+    pickedMarker = L.marker([picked.lat, picked.lng]).addTo(map)
+      .bindPopup("Selected location").openPopup();
+
+    setSheet(true);
+
+    const roadName = await reverseGeocode(picked.lat, picked.lng);
+    if(roadName){
+      document.getElementById("road").value = roadName;
+      document.getElementById("picked").textContent =
+        `Picked: ${roadName} — ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)}`;
+    } else {
+      document.getElementById("picked").textContent =
+        `Picked: ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)} (type road manually)`;
+    }
+  });
+
+  function escapeHtml(s){
+    return String(s||"")
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  async function loadTraffic(){
+    try{
+      const res = await fetch(`${BASE}/traffic`);
+      const data = await res.json();
+
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+
+      data.forEach(item => {
+        const m = L.marker([item.lat, item.lng], { icon: makeIcon(item.status) })
+          .addTo(map)
+          .bindPopup(`
+            <b>${escapeHtml(item.road)}</b><br>
+            Status: <b>${escapeHtml(item.status)}</b> | Type: <b>${escapeHtml(item.type || "General")}</b><br>
+            Alt: ${escapeHtml(item.alternative)}<br>
+            Note: ${escapeHtml(item.note) || "-"}<br>
+            ${item.photoUrl ? `<img class="thumb" src="${item.photoUrl}" />` : ""}
+            <div style="opacity:.7;font-size:12px;margin-top:6px;">${new Date(item.createdAt).toLocaleString()}</div>
+          `);
+        markers.push(m);
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <b>${escapeHtml(item.road)}</b><br>
+          <span class="small">Status: <b>${escapeHtml(item.status)}</b> | ${escapeHtml(item.type || "General")}</span><br>
+          <span class="small">Alt: ${escapeHtml(item.alternative)}</span>
+          ${item.photoUrl ? `<img class="thumb" src="${item.photoUrl}" />` : ""}
+          <div class="small">${new Date(item.createdAt).toLocaleString()}</div>
+        `;
+
+        card.addEventListener("click", () => {
+          map.setView([item.lat, item.lng], 14);
+          m.openPopup();
+        });
+
+        list.appendChild(card);
+      });
+
+      setMsg(`Loaded ${data.length} update(s).`);
+    } catch (e){
+      console.error(e);
+      setMsg("Failed to load. Check BASE URL.");
+    }
+  }
+
+  async function uploadPhotoIfAny(){
+    const input = document.getElementById("photo");
+    if(!input.files || !input.files[0]) return "";
+
+    const fd = new FormData();
+    fd.append("photo", input.files[0]);
+
+    const res = await fetch(`${BASE}/upload`, { method: "POST", body: fd });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || "Upload failed");
+    return data.url;
+  }
+
+  document.getElementById("postBtn").addEventListener("click", async () => {
+    const road = document.getElementById("road").value.trim();
+    const status = document.getElementById("status").value;
+    const type = document.getElementById("type").value;
+    const alternative = document.getElementById("alt").value.trim();
+    const note = document.getElementById("note").value.trim();
+
+    if(!picked) return alert("Tap the map to pick a location first.");
+    if(!road) return alert("Road is empty.");
+    if(!alternative) return alert("Alternative route is required.");
+
+    try{
+      setMsg("Uploading / posting...");
+      const photoUrl = await uploadPhotoIfAny();
+
+      await fetch(`${BASE}/traffic`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({
+          road, status, type, alternative, note,
+          lat: picked.lat, lng: picked.lng,
+          photoUrl
+        })
+      });
+
+      // reset
+      document.getElementById("alt").value = "";
+      document.getElementById("note").value = "";
+      document.getElementById("photo").value = "";
+      picked = null;
+      document.getElementById("picked").textContent = "Picked location: none";
+      if(pickedMarker){ map.removeLayer(pickedMarker); pickedMarker = null; }
+
+      setMsg("Posted ✅");
+      await loadTraffic();
+      setSheet(false);
+    } catch (e){
+      console.error(e);
+      alert(e.message || "Failed to post");
+      setMsg("Failed to post.");
+    }
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", loadTraffic);
+
+  loadTraffic();
+</script>
+</body>
+</html>
